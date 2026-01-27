@@ -19,8 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "lwip.h"
-
 #include "debug_uart.h"
+#include "lwip/netif.h"
+extern struct netif gnetif;   // ← только ссылка
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -75,33 +76,38 @@ int main(void)
 
   /* USER CODE END 1 */
 
-  /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
+	/* MPU Configuration */
+	  // MPU_Config();          // ← ОСТАЁТСЯ ЗАКОММЕНТИРОВАННЫМ
 
-  /* MCU Configuration--------------------------------------------------------*/
+	  HAL_Init();               // ← СНАЧАЛА HAL
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	  SystemClock_Config();     // ← ПОТОМ КЛОКИ
 
-  /* USER CODE BEGIN Init */
+	  // SCB_DisableDCache();   // ← ВРЕМЕННО ТОЖЕ УБРАТЬ
 
-  /* USER CODE END Init */
+	  MX_GPIO_Init();
+	  MX_USART3_UART_Init();
+	  MX_LWIP_Init();
 
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USART3_UART_Init();
-  DebugUART_Init();
-  DebugUART_Print("Hello from STM32H723!\r\n");
-
-  MX_LWIP_Init();
+	  DebugUART_Print("UART OK\r\n");
+	  DebugUART_Print("PHY addr = %d\r\n", gnetif.hwaddr_len);
   /* USER CODE BEGIN 2 */
+
+  if (netif_is_link_up(&gnetif))
+  {
+      DebugUART_Print("ETH link: UP\r\n");
+  }
+  else
+  {
+      DebugUART_Print("ETH link: DOWN\r\n");
+  }
+
+  /* Дадим DHCP немного времени */
+  HAL_Delay(1000);
+
+  DebugUART_Print("IP: %s\r\n", ipaddr_ntoa(&gnetif.ip_addr));
+  DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
+  DebugUART_Print("GW: %s\r\n", ipaddr_ntoa(&gnetif.gw));
 
   /* USER CODE END 2 */
 
@@ -110,7 +116,44 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	  static uint8_t printed = 0;
 
+	  static uint32_t last = 0;
+
+	  struct dhcp *dhcp = netif_dhcp_data(&gnetif);
+	  if (dhcp)
+	  {
+	      DebugUART_Print("[DHCP] state=%d tries=%d\r\n",
+	          dhcp->state, dhcp->tries);
+	  }
+
+	  if (HAL_GetTick() - last > 2000)
+	  {
+	      last = HAL_GetTick();
+	      DebugUART_Print("DHCP state: %d\r\n",
+	          dhcp_supplied_address(&gnetif));
+	      ethernet_link_check_state(&gnetif);
+	  }
+
+	  MX_LWIP_Process();
+	  ethernetif_input(&gnetif);
+	  ethernet_link_check_state(&gnetif);
+	  HAL_Delay(10);
+
+	  if (!printed && gnetif.ip_addr.addr != 0)
+	  {
+	      char ip[16], mask[16], gw[16];
+
+	      ipaddr_ntoa_r(&gnetif.ip_addr, ip, sizeof(ip));
+	      ipaddr_ntoa_r(&gnetif.netmask, mask, sizeof(mask));
+	      ipaddr_ntoa_r(&gnetif.gw, gw, sizeof(gw));
+
+	      DebugUART_Print("IP: %s\r\n", ip);
+	      DebugUART_Print("MASK: %s\r\n", mask);
+	      DebugUART_Print("GW: %s\r\n", gw);
+
+	      printed = 1;
+	  }
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -156,7 +199,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 

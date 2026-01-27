@@ -80,7 +80,12 @@ void MX_LWIP_Init(void)
   netif_set_link_callback(&gnetif, ethernet_link_status_updated);
 
   /* Start DHCP negotiation for a network interface (IPv4) */
+  //dhcp_start(&gnetif);
+
+#if LWIP_DHCP
   dhcp_start(&gnetif);
+  DebugUART_Print("[DHCP] dhcp_start() called\r\n");
+#endif
 
 /* USER CODE BEGIN 3 */
 
