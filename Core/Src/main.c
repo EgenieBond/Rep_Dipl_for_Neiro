@@ -19,9 +19,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "lwip.h"
-#include "debug_uart.h"
+
 #include "lwip/netif.h"
-extern struct netif gnetif;   // ← только ссылка
+extern struct netif gnetif;
+
+#include "debug_uart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -76,21 +78,29 @@ int main(void)
 
   /* USER CODE END 1 */
 
-	/* MPU Configuration */
-	  // MPU_Config();          // ← ОСТАЁТСЯ ЗАКОММЕНТИРОВАННЫМ
+  /* MPU Configuration--------------------------------------------------------*/
+  //MPU_Config();
 
-	  HAL_Init();               // ← СНАЧАЛА HAL
+  /* MCU Configuration--------------------------------------------------------*/
 
-	  SystemClock_Config();     // ← ПОТОМ КЛОКИ
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-	  // SCB_DisableDCache();   // ← ВРЕМЕННО ТОЖЕ УБРАТЬ
+  /* USER CODE BEGIN Init */
 
-	  MX_GPIO_Init();
-	  MX_USART3_UART_Init();
-	  MX_LWIP_Init();
+  /* USER CODE END Init */
 
-	  DebugUART_Print("UART OK\r\n");
-	  DebugUART_Print("PHY addr = %d\r\n", gnetif.hwaddr_len);
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART3_UART_Init();
+  MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
 
   if (netif_is_link_up(&gnetif))
@@ -103,7 +113,7 @@ int main(void)
   }
 
   /* Дадим DHCP немного времени */
-  HAL_Delay(1000);
+  //HAL_Delay(1000);
 
   DebugUART_Print("IP: %s\r\n", ipaddr_ntoa(&gnetif.ip_addr));
   DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
@@ -115,47 +125,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-	  static uint8_t printed = 0;
-
-	  static uint32_t last = 0;
-
-	  struct dhcp *dhcp = netif_dhcp_data(&gnetif);
-	  if (dhcp)
-	  {
-	      DebugUART_Print("[DHCP] state=%d tries=%d\r\n",
-	          dhcp->state, dhcp->tries);
-	  }
-
-	  if (HAL_GetTick() - last > 2000)
-	  {
-	      last = HAL_GetTick();
-	      DebugUART_Print("DHCP state: %d\r\n",
-	          dhcp_supplied_address(&gnetif));
-	      ethernet_link_check_state(&gnetif);
-	  }
-
 	  MX_LWIP_Process();
-	  ethernetif_input(&gnetif);
-	  ethernet_link_check_state(&gnetif);
 	  HAL_Delay(10);
-
-	  if (!printed && gnetif.ip_addr.addr != 0)
-	  {
-	      char ip[16], mask[16], gw[16];
-
-	      ipaddr_ntoa_r(&gnetif.ip_addr, ip, sizeof(ip));
-	      ipaddr_ntoa_r(&gnetif.netmask, mask, sizeof(mask));
-	      ipaddr_ntoa_r(&gnetif.gw, gw, sizeof(gw));
-
-	      DebugUART_Print("IP: %s\r\n", ip);
-	      DebugUART_Print("MASK: %s\r\n", mask);
-	      DebugUART_Print("GW: %s\r\n", gw);
-
-	      printed = 1;
-	  }
-    /* USER CODE BEGIN 3 */
   }
+
   /* USER CODE END 3 */
 }
 

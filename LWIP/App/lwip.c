@@ -57,40 +57,29 @@ ip4_addr_t gw;
 /**
   * LwIP initialization function
   */
+
 void MX_LWIP_Init(void)
 {
-  /* Initialize the LwIP stack without RTOS */
-  lwip_init();
+    lwip_init();
 
-  /* IP addresses initialization with DHCP (IPv4) */
-  ipaddr.addr = 0;
-  netmask.addr = 0;
-  gw.addr = 0;
+    ipaddr.addr = 0;
+    netmask.addr = 0;
+    gw.addr = 0;
 
-  /* add the network interface (IPv4/IPv6) without RTOS */
-  netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init, &ethernet_input);
+    netif_add(&gnetif, &ipaddr, &netmask, &gw,
+              NULL, ethernetif_init, ethernet_input);
 
-  /* Registers the default network interface */
-  netif_set_default(&gnetif);
+    netif_set_default(&gnetif);
 
-  /* We must always bring the network interface up connection or not... */
-  netif_set_up(&gnetif);
+    /* Интерфейс и линк считаем DOWN до PHY UP */
+    netif_set_down(&gnetif);
+    netif_set_link_down(&gnetif);
 
-  /* Set the link callback function, this function is called on change of link status*/
-  netif_set_link_callback(&gnetif, ethernet_link_status_updated);
+    netif_set_link_callback(&gnetif, ethernet_link_status_updated);
 
-  /* Start DHCP negotiation for a network interface (IPv4) */
-  //dhcp_start(&gnetif);
-
-#if LWIP_DHCP
-  dhcp_start(&gnetif);
-  DebugUART_Print("[DHCP] dhcp_start() called\r\n");
-#endif
-
-/* USER CODE BEGIN 3 */
-
-/* USER CODE END 3 */
+    DebugUART_Print("[LWIP] Init done, waiting for link UP\r\n");
 }
+
 
 #ifdef USE_OBSOLETE_USER_CODE_SECTION_4
 /* Kept to help code migration. (See new 4_1, 4_2... sections) */
@@ -130,22 +119,14 @@ static void Ethernet_Link_Periodic_Handle(struct netif *netif)
  * Handle timeouts if LWIP_TIMERS is set and without RTOS
  * Handle the llink status if LWIP_NETIF_LINK_CALLBACK is set and without RTOS
  */
+
 void MX_LWIP_Process(void)
 {
-/* USER CODE BEGIN 4_1 */
-/* USER CODE END 4_1 */
   ethernetif_input(&gnetif);
-
-/* USER CODE BEGIN 4_2 */
-/* USER CODE END 4_2 */
-  /* Handle timeouts */
   sys_check_timeouts();
-
   Ethernet_Link_Periodic_Handle(&gnetif);
-
-/* USER CODE BEGIN 4_3 */
-/* USER CODE END 4_3 */
 }
+
 
 /**
   * @brief  Notify the User about the network interface config status
@@ -154,17 +135,26 @@ void MX_LWIP_Process(void)
   */
 static void ethernet_link_status_updated(struct netif *netif)
 {
-  if (netif_is_up(netif))
-  {
-/* USER CODE BEGIN 5 */
-/* USER CODE END 5 */
-  }
-  else /* netif is down */
-  {
-/* USER CODE BEGIN 6 */
-/* USER CODE END 6 */
-  }
+    if (netif_is_link_up(netif))
+    {
+        DebugUART_Print("[ETH] Link UP -> netif UP + DHCP\r\n");
+
+        netif_set_up(netif);
+
+        if (!dhcp_supplied_address(netif))
+        {
+            dhcp_start(netif);
+        }
+    }
+    else
+    {
+        DebugUART_Print("[ETH] Link DOWN\r\n");
+
+        dhcp_stop(netif);
+        netif_set_down(netif);
+    }
 }
+
 
 #if defined ( __CC_ARM )  /* MDK ARM Compiler */
 /**

@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#pragma once
+#include <stdarg.h>
+
 void DebugUART_Init(void);
 void DebugUART_Print(const char *fmt, ...);
 
