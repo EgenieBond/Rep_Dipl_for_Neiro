@@ -1,74 +1,22 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "lwip.h"
-#include "debug_uart.h"
-#include "lwip/netif.h"
-extern struct netif gnetif;   // ← только ссылка
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
+extern void DebugUART_Print(const char *fmt, ...);
 
 /* Private variables ---------------------------------------------------------*/
-
 UART_HandleTypeDef huart3;
-
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
-/* USER CODE BEGIN PFP */
 
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
 int main(void)
 {
 
@@ -76,21 +24,19 @@ int main(void)
 
   /* USER CODE END 1 */
 
-	/* MPU Configuration */
-	  // MPU_Config();          // ← ОСТАЁТСЯ ЗАКОММЕНТИРОВАННЫМ
+  /* MPU Configuration--------------------------------------------------------*/
+  MPU_Config();
 
-	  HAL_Init();               // ← СНАЧАЛА HAL
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-	  SystemClock_Config();     // ← ПОТОМ КЛОКИ
+  /* Configure the system clock */
+  SystemClock_Config();
 
-	  // SCB_DisableDCache();   // ← ВРЕМЕННО ТОЖЕ УБРАТЬ
-
-	  MX_GPIO_Init();
-	  MX_USART3_UART_Init();
-	  MX_LWIP_Init();
-
-	  DebugUART_Print("UART OK\r\n");
-	  DebugUART_Print("PHY addr = %d\r\n", gnetif.hwaddr_len);
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART3_UART_Init();
+  MX_LWIP_Init();
   /* USER CODE BEGIN 2 */
 
   if (netif_is_link_up(&gnetif))
@@ -103,60 +49,17 @@ int main(void)
   }
 
   /* Дадим DHCP немного времени */
-  HAL_Delay(1000);
+  //HAL_Delay(1000);
 
   DebugUART_Print("IP: %s\r\n", ipaddr_ntoa(&gnetif.ip_addr));
   DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
   DebugUART_Print("GW: %s\r\n", ipaddr_ntoa(&gnetif.gw));
 
   /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-	  static uint8_t printed = 0;
-
-	  static uint32_t last = 0;
-
-	  struct dhcp *dhcp = netif_dhcp_data(&gnetif);
-	  if (dhcp)
-	  {
-	      DebugUART_Print("[DHCP] state=%d tries=%d\r\n",
-	          dhcp->state, dhcp->tries);
-	  }
-
-	  if (HAL_GetTick() - last > 2000)
-	  {
-	      last = HAL_GetTick();
-	      DebugUART_Print("DHCP state: %d\r\n",
-	          dhcp_supplied_address(&gnetif));
-	      ethernet_link_check_state(&gnetif);
-	  }
-
 	  MX_LWIP_Process();
-	  ethernetif_input(&gnetif);
-	  ethernet_link_check_state(&gnetif);
-	  HAL_Delay(10);
-
-	  if (!printed && gnetif.ip_addr.addr != 0)
-	  {
-	      char ip[16], mask[16], gw[16];
-
-	      ipaddr_ntoa_r(&gnetif.ip_addr, ip, sizeof(ip));
-	      ipaddr_ntoa_r(&gnetif.netmask, mask, sizeof(mask));
-	      ipaddr_ntoa_r(&gnetif.gw, gw, sizeof(gw));
-
-	      DebugUART_Print("IP: %s\r\n", ip);
-	      DebugUART_Print("MASK: %s\r\n", mask);
-	      DebugUART_Print("GW: %s\r\n", gw);
-
-	      printed = 1;
-	  }
-    /* USER CODE BEGIN 3 */
   }
-  /* USER CODE END 3 */
 }
 
 /**
@@ -168,12 +71,8 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Supply configuration update enable
-  */
   HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
 
-  /** Configure the main internal regulator output voltage
-  */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
@@ -209,21 +108,8 @@ void SystemClock_Config(void)
   }
 }
 
-/**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
 static void MX_USART3_UART_Init(void)
 {
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
   huart3.Init.BaudRate = 115200;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
@@ -251,17 +137,8 @@ static void MX_USART3_UART_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
 }
 
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
 static void MX_GPIO_Init(void)
 {
 /* USER CODE BEGIN MX_GPIO_Init_1 */
@@ -287,12 +164,6 @@ static void MX_GPIO_Init(void)
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 /* USER CODE END MX_GPIO_Init_2 */
 }
-
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
- /* MPU Configuration */
 
 void MPU_Config(void)
 {
@@ -321,15 +192,10 @@ void MPU_Config(void)
 
 }
 
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
+   __disable_irq();
   while (1)
   {
   }
@@ -337,13 +203,7 @@ void Error_Handler(void)
 }
 
 #ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
