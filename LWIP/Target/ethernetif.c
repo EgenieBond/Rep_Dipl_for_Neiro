@@ -33,6 +33,8 @@
 
 /* Within 'USER CODE' section, code will be kept by default at each generation */
 /* USER CODE BEGIN 0 */
+extern void DebugUART_Print(const char *fmt, ...);
+static uint8_t eth_initialized = 0;
 
 /* USER CODE END 0 */
 
@@ -154,6 +156,7 @@ lan8742_IOCtx_t  LAN8742_IOCtx = {ETH_PHY_IO_Init,
 void pbuf_free_custom(struct pbuf *p);
 
 /* USER CODE BEGIN 4 */
+//static void ethernet_link_status_updated(struct netif *netif);
 
 /* USER CODE END 4 */
 
@@ -171,8 +174,6 @@ static void low_level_init(struct netif *netif)
 {
   HAL_StatusTypeDef hal_eth_init_status = HAL_OK;
   /* Start ETH HAL Init */
-
-  DebugUART_Print("[ETH] low_level_init()\r\n");
 
    uint8_t MACAddr[6] ;
   heth.Instance = ETH;
@@ -230,8 +231,6 @@ static void low_level_init(struct netif *netif)
 
 /* USER CODE BEGIN PHY_PRE_CONFIG */
 
-    DebugUART_Print("[ETH] LAN8742 init...\r\n");
-
 /* USER CODE END PHY_PRE_CONFIG */
   /* Set PHY IO functions */
   LAN8742_RegisterBusIO(&LAN8742, &LAN8742_IOCtx);
@@ -241,17 +240,12 @@ static void low_level_init(struct netif *netif)
   {
     netif_set_link_down(netif);
     netif_set_down(netif);
-
-    DebugUART_Print("[ETH] LAN8742 init FAILED\r\n");
-
-
     return;
   }
 
   if (hal_eth_init_status == HAL_OK)
   {
   /* Get link state */
-	  DebugUART_Print("[ETH] LAN8742 init OK\r\n");
   ethernet_link_check_state(netif);
   }
   else
@@ -358,10 +352,8 @@ void ethernetif_input(struct netif *netif)
     p = low_level_input( netif );
     if (p != NULL)
     {
-    	DebugUART_Print("[ETH] RX packet len=%d\r\n", p->tot_len);
       if (netif->input( p, netif) != ERR_OK )
       {
-    	  DebugUART_Print("[ETH] RX input error\r\n");
         pbuf_free(p);
       }
     }
@@ -535,6 +527,9 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+    /* Peripheral interrupt init */
+    HAL_NVIC_SetPriority(ETH_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(ETH_IRQn);
   /* USER CODE BEGIN ETH_MspInit 1 */
 
   /* USER CODE END ETH_MspInit 1 */
@@ -569,6 +564,9 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* ethHandle)
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_7);
 
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13);
+
+    /* Peripheral interrupt Deinit*/
+    HAL_NVIC_DisableIRQ(ETH_IRQn);
 
   /* USER CODE BEGIN ETH_MspDeInit 1 */
 
@@ -653,85 +651,65 @@ int32_t ETH_PHY_IO_GetTick(void)
   * @brief  Check the ETH link state then update ETH driver and netif link accordingly.
   * @retval None
   */
+
 void ethernet_link_check_state(struct netif *netif)
 {
-    ETH_MACConfigTypeDef MACConf = {0};
-    int32_t phy_state;
-    uint32_t speed = 0, duplex = 0;
-    uint8_t linkchanged = 0;
+  ETH_MACConfigTypeDef MACConf = {0};
+  int32_t PHYLinkState;
+  uint32_t speed = 0, duplex = 0, linkchanged = 0;
 
-    DebugUART_Print("\r\n[ETH] ethernet_link_check_state()\r\n");
+  PHYLinkState = LAN8742_GetLinkState(&LAN8742);
 
-    phy_state = LAN8742_GetLinkState(&LAN8742);
-    DebugUART_Print("[ETH] PHY raw state = %ld\r\n", phy_state);
-
-    /* Расшифровка состояния PHY */
-    switch (phy_state)
+  /* ===== LINK DOWN ===== */
+  if (netif_is_link_up(netif) && (PHYLinkState <= LAN8742_STATUS_LINK_DOWN))
+  {
+    HAL_ETH_Stop_IT(&heth);
+    netif_set_link_down(netif);
+  }
+  /* ===== LINK UP ===== */
+  else if (!netif_is_link_up(netif) && (PHYLinkState > LAN8742_STATUS_LINK_DOWN))
+  {
+    switch (PHYLinkState)
     {
-    case LAN8742_STATUS_LINK_DOWN:
-        DebugUART_Print("[ETH] PHY: LINK DOWN\r\n");
-        break;
-
-    case LAN8742_STATUS_10MBITS_HALFDUPLEX:
-        DebugUART_Print("[ETH] PHY: 10M HALF\r\n");
-        speed  = ETH_SPEED_10M;
-        duplex = ETH_HALFDUPLEX_MODE;
-        linkchanged = 1;
-        break;
-
-    case LAN8742_STATUS_10MBITS_FULLDUPLEX:
-        DebugUART_Print("[ETH] PHY: 10M FULL\r\n");
-        speed  = ETH_SPEED_10M;
+      case LAN8742_STATUS_100MBITS_FULLDUPLEX:
+        speed = ETH_SPEED_100M;
         duplex = ETH_FULLDUPLEX_MODE;
         linkchanged = 1;
         break;
 
-    case LAN8742_STATUS_100MBITS_HALFDUPLEX:
-        DebugUART_Print("[ETH] PHY: 100M HALF\r\n");
-        speed  = ETH_SPEED_100M;
+      case LAN8742_STATUS_100MBITS_HALFDUPLEX:
+        speed = ETH_SPEED_100M;
         duplex = ETH_HALFDUPLEX_MODE;
         linkchanged = 1;
         break;
 
-    case LAN8742_STATUS_100MBITS_FULLDUPLEX:
-        DebugUART_Print("[ETH] PHY: 100M FULL\r\n");
-        speed  = ETH_SPEED_100M;
+      case LAN8742_STATUS_10MBITS_FULLDUPLEX:
+        speed = ETH_SPEED_10M;
         duplex = ETH_FULLDUPLEX_MODE;
         linkchanged = 1;
         break;
 
-    default:
-        DebugUART_Print("[ETH] PHY: UNKNOWN STATE (%ld)\r\n", phy_state);
+      case LAN8742_STATUS_10MBITS_HALFDUPLEX:
+        speed = ETH_SPEED_10M;
+        duplex = ETH_HALFDUPLEX_MODE;
+        linkchanged = 1;
+        break;
+
+      default:
         break;
     }
 
-    /* Если линк был UP, а PHY сказал DOWN */
-    if (netif_is_link_up(netif) && phy_state <= LAN8742_STATUS_LINK_DOWN)
+    if (linkchanged)
     {
-        DebugUART_Print("[ETH] Link lost -> stopping MAC\r\n");
-        HAL_ETH_Stop(&heth);
-        netif_set_down(netif);
-        netif_set_link_down(netif);
-        return;
+      HAL_ETH_GetMACConfig(&heth, &MACConf);
+      MACConf.Speed = speed;
+      MACConf.DuplexMode = duplex;
+      HAL_ETH_SetMACConfig(&heth, &MACConf);
+
+      HAL_ETH_Start_IT(&heth);
+      netif_set_link_up(netif);
     }
-
-    /* Если линк был DOWN, а PHY стал UP */
-    if (!netif_is_link_up(netif) && linkchanged)
-    {
-        DebugUART_Print("[ETH] Link up -> configuring MAC\r\n");
-
-        HAL_ETH_GetMACConfig(&heth, &MACConf);
-        MACConf.Speed = speed;
-        MACConf.DuplexMode = duplex;
-        HAL_ETH_SetMACConfig(&heth, &MACConf);
-
-        HAL_ETH_Start(&heth);
-
-        netif_set_up(netif);
-        netif_set_link_up(netif);
-
-        DebugUART_Print("[ETH] MAC started, netif UP\r\n");
-    }
+  }
 }
 
 
@@ -809,4 +787,5 @@ void HAL_ETH_TxFreeCallback(uint32_t * buff)
 /* USER CODE BEGIN 8 */
 
 /* USER CODE END 8 */
+
 
