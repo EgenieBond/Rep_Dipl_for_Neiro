@@ -1,22 +1,8 @@
-/* USER CODE BEGIN Header */
 /**
   ******************************************************************************
   * File Name          : ethernetif.c
   * Description        : This file provides code for the configuration
-  *                      of the ethernetif.c MiddleWare.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
+ */
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -31,7 +17,6 @@
 #include "lan8742.h"
 #include <string.h>
 
-/* Within 'USER CODE' section, code will be kept by default at each generation */
 /* USER CODE BEGIN 0 */
 extern void DebugUART_Print(const char *fmt, ...);
 static uint8_t eth_initialized = 0;
@@ -49,9 +34,6 @@ static uint8_t eth_initialized = 0;
 #define ETH_TX_BUFFER_MAX             ((ETH_TX_DESC_CNT) * 2U)
 /* ETH_RX_BUFFER_SIZE parameter is defined in lwipopts.h */
 
-/* USER CODE BEGIN 1 */
-
-/* USER CODE END 1 */
 
 /* Private variables ---------------------------------------------------------*/
 /*
@@ -654,62 +636,86 @@ int32_t ETH_PHY_IO_GetTick(void)
 
 void ethernet_link_check_state(struct netif *netif)
 {
-  ETH_MACConfigTypeDef MACConf = {0};
-  int32_t PHYLinkState;
-  uint32_t speed = 0, duplex = 0, linkchanged = 0;
+    ETH_MACConfigTypeDef MACConf = {0};
+    int32_t PHYLinkState;
+    uint32_t speed = 0, duplex = 0;
 
-  PHYLinkState = LAN8742_GetLinkState(&LAN8742);
+    PHYLinkState = LAN8742_GetLinkState(&LAN8742);
 
-  /* ===== LINK DOWN ===== */
-  if (netif_is_link_up(netif) && (PHYLinkState <= LAN8742_STATUS_LINK_DOWN))
-  {
-    HAL_ETH_Stop_IT(&heth);
-    netif_set_link_down(netif);
-  }
-  /* ===== LINK UP ===== */
-  else if (!netif_is_link_up(netif) && (PHYLinkState > LAN8742_STATUS_LINK_DOWN))
-  {
+    /* ================= LINK DOWN ================= */
+    if (PHYLinkState <= LAN8742_STATUS_LINK_DOWN)
+    {
+        if (netif_is_link_up(netif))
+        {
+            DebugUART_Print("[ETH] Link DOWN\r\n");
+
+            HAL_ETH_Stop_IT(&heth);
+
+            netif_set_link_down(netif);
+            netif_set_down(netif);
+        }
+        return;
+    }
+
+    /* ================= AUTONEGO NOT DONE ================= */
+    if (PHYLinkState == LAN8742_STATUS_AUTONEGO_NOTDONE)
+    {
+        return; // просто ждём
+    }
+
+    /* ================= LINK UP ================= */
     switch (PHYLinkState)
     {
-      case LAN8742_STATUS_100MBITS_FULLDUPLEX:
-        speed = ETH_SPEED_100M;
-        duplex = ETH_FULLDUPLEX_MODE;
-        linkchanged = 1;
-        break;
+        case LAN8742_STATUS_100MBITS_FULLDUPLEX:
+            speed  = ETH_SPEED_100M;
+            duplex = ETH_FULLDUPLEX_MODE;
+            break;
 
-      case LAN8742_STATUS_100MBITS_HALFDUPLEX:
-        speed = ETH_SPEED_100M;
-        duplex = ETH_HALFDUPLEX_MODE;
-        linkchanged = 1;
-        break;
+        case LAN8742_STATUS_100MBITS_HALFDUPLEX:
+            speed  = ETH_SPEED_100M;
+            duplex = ETH_HALFDUPLEX_MODE;
+            break;
 
-      case LAN8742_STATUS_10MBITS_FULLDUPLEX:
-        speed = ETH_SPEED_10M;
-        duplex = ETH_FULLDUPLEX_MODE;
-        linkchanged = 1;
-        break;
+        case LAN8742_STATUS_10MBITS_FULLDUPLEX:
+            speed  = ETH_SPEED_10M;
+            duplex = ETH_FULLDUPLEX_MODE;
+            break;
 
-      case LAN8742_STATUS_10MBITS_HALFDUPLEX:
-        speed = ETH_SPEED_10M;
-        duplex = ETH_HALFDUPLEX_MODE;
-        linkchanged = 1;
-        break;
+        case LAN8742_STATUS_10MBITS_HALFDUPLEX:
+            speed  = ETH_SPEED_10M;
+            duplex = ETH_HALFDUPLEX_MODE;
+            break;
 
-      default:
-        break;
+        default:
+            return;
     }
 
-    if (linkchanged)
+    if (!netif_is_link_up(netif))
     {
-      HAL_ETH_GetMACConfig(&heth, &MACConf);
-      MACConf.Speed = speed;
-      MACConf.DuplexMode = duplex;
-      HAL_ETH_SetMACConfig(&heth, &MACConf);
+        DebugUART_Print("[ETH] Link UP\r\n");
 
-      HAL_ETH_Start_IT(&heth);
-      netif_set_link_up(netif);
+        HAL_ETH_GetMACConfig(&heth, &MACConf);
+        MACConf.Speed = speed;
+        MACConf.DuplexMode = duplex;
+        HAL_ETH_SetMACConfig(&heth, &MACConf);
+
+        HAL_ETH_Start_IT(&heth);
+
+        netif_set_up(netif);
+        netif_set_link_up(netif);
     }
-  }
+}
+
+static void ethernet_link_status_updated(struct netif *netif)
+{
+    if (netif_is_link_up(netif))
+    {
+        DebugUART_Print("[LWIP] Netif LINK UP\r\n");
+    }
+    else
+    {
+        DebugUART_Print("[LWIP] Netif LINK DOWN\r\n");
+    }
 }
 
 
@@ -787,5 +793,4 @@ void HAL_ETH_TxFreeCallback(uint32_t * buff)
 /* USER CODE BEGIN 8 */
 
 /* USER CODE END 8 */
-
 
