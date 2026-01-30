@@ -36,9 +36,6 @@ static void Ethernet_Link_Periodic_Handle(struct netif *netif);
 /* ETH Variables initialization ----------------------------------------------*/
 void Error_Handler(void);
 
-/* DHCP Variables initialization ---------------------------------------------*/
-uint32_t DHCPfineTimer = 0;
-uint32_t DHCPcoarseTimer = 0;
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */
@@ -49,6 +46,9 @@ struct netif gnetif;
 ip4_addr_t ipaddr;
 ip4_addr_t netmask;
 ip4_addr_t gw;
+uint8_t IP_ADDRESS[4];
+uint8_t NETMASK_ADDRESS[4];
+uint8_t GATEWAY_ADDRESS[4];
 
 /* USER CODE BEGIN 2 */
 
@@ -59,38 +59,47 @@ ip4_addr_t gw;
   */
 void MX_LWIP_Init(void)
 {
-  /* Initialize the LwIP stack without RTOS */
-  lwip_init();
+    DebugUART_Print("[LWIP] >>> ENTER MX_LWIP_Init <<<\r\n");
 
-  /* IP addresses initialization with DHCP (IPv4) */
-  ipaddr.addr = 0;
-  netmask.addr = 0;
-  gw.addr = 0;
+    /* 1. Init LwIP stack */
+    lwip_init();
 
-  /* add the network interface (IPv4/IPv6) without RTOS */
-  netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init, &ethernet_input);
+    /* 2. Configure STATIC IPv4 address */
+    IP4_ADDR(&ipaddr,  192, 168, 1, 50);
+    IP4_ADDR(&netmask, 255, 255, 255, 0);
+    IP4_ADDR(&gw,      192, 168, 1, 1);
 
-  /* Registers the default network interface */
-  netif_set_default(&gnetif);
+    /* 3. Add network interface */
+    netif_add(&gnetif,
+              &ipaddr,
+              &netmask,
+              &gw,
+              NULL,
+              ethernetif_init,
+              ethernet_input);
 
-  /* We must always bring the network interface up connection or not... */
-  netif_set_up(&gnetif);
+    /* 4. Set default interface */
+    netif_set_default(&gnetif);
 
-  /* Set the link callback function, this function is called on change of link status*/
-  netif_set_link_callback(&gnetif, ethernet_link_status_updated);
+    /*
+     * 5. Bring interface UP unconditionally
+     *    (for static IP, interface state is independent of PHY link)
+     */
+    netif_set_up(&gnetif);
 
-  /* Start DHCP negotiation for a network interface (IPv4) */
-  //dhcp_start(&gnetif);
+    /*
+     * 6. Link state will be controlled by PHY
+     *    via ethernet_link_status_updated()
+     */
+    netif_set_link_callback(&gnetif, ethernet_link_status_updated);
 
-#if LWIP_DHCP
-  dhcp_start(&gnetif);
-  DebugUART_Print("[DHCP] dhcp_start() called\r\n");
-#endif
-
-/* USER CODE BEGIN 3 */
-
-/* USER CODE END 3 */
+    /* 7. Debug info */
+    DebugUART_Print("[LWIP] Static IP configured\r\n");
+    DebugUART_Print("IP:   %s\r\n", ipaddr_ntoa(&gnetif.ip_addr));
+    DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
+    DebugUART_Print("GW:   %s\r\n", ipaddr_ntoa(&gnetif.gw));
 }
+
 
 #ifdef USE_OBSOLETE_USER_CODE_SECTION_4
 /* Kept to help code migration. (See new 4_1, 4_2... sections) */
