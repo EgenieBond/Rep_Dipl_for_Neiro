@@ -3,21 +3,15 @@
 57600   - скорость в Путти
 
 - реализован статический IP
-[LWIP] >>> ENTER MX_LWIP_Init <<<
-[LWIP] Static IP configured
-IP:   192.168.1.50
-MASK: 255.255.255.0
-GW:   192.168.1.1
-ETH link: DOWN
-IP: 192.168.1.50
-MASK: 255.255.255.0
-GW: 192.168.1.1
 
-Проблема: что-то с PHY
-ETH link: DOWN = физического Ethernet-соединения нет.
-Когда LINK = DOWN, Сервер:
-❌ НЕ доступен по сети
-❌ НЕ принимает TCP/UDP пакеты
-❌ ping не проходит
-❌ ПК не может подключиться
-❌ Клиент просто «не видит» устройство
+[LWIP] >>> ENTER MX_LWIP_Init <<< [LWIP] Static IP configured IP: 192.168.1.50 MASK: 255.255.255.0 GW: 192.168.1.1 ETH link: UP IP: 192.168.1.50 MASK: 255.255.255.0 GW: 192.168.1.1 [LWIP] >>> ENTER MX_LWIP_Init <<< [LWIP] Static IP configured IP: 192.168.1.50 MASK: 255.255.255.0 GW: 192.168.1.1 ETH link: DOWN IP: 192.168.1.50 MASK: 255.255.255.0 GW: 192.168.1.1 [ETH] Link UP
+
+На момент main() линк уже поднят. Это значит:
+- PHY жив
+- auto-negotiation прошла
+- MAC стартовал
+- netif уже link_up
+
+- 👉 Проблем с LWIP / Ethernet больше НЕТ
+
+- Пока просто настроила сервер, не запускала его еще
