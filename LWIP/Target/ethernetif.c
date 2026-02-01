@@ -17,11 +17,9 @@
 #include "lan8742.h"
 #include <string.h>
 
-/* USER CODE BEGIN 0 */
+#include "raw_tcp_server.h"
 extern void DebugUART_Print(const char *fmt, ...);
 static uint8_t eth_initialized = 0;
-
-/* USER CODE END 0 */
 
 /* Private define ------------------------------------------------------------*/
 
@@ -34,7 +32,6 @@ static uint8_t eth_initialized = 0;
 #define ETH_TX_BUFFER_MAX             ((ETH_TX_DESC_CNT) * 2U)
 /* ETH_RX_BUFFER_SIZE parameter is defined in lwipopts.h */
 
-
 /* Private variables ---------------------------------------------------------*/
 /*
 @Note: This interface is implemented to operate in zero-copy mode only:
@@ -42,7 +39,6 @@ static uint8_t eth_initialized = 0;
           then passed to ETH HAL driver.
         - Tx Buffers will be allocated from LwIP stack memory heap,
           then passed to ETH HAL driver.
-
 @Notes:
   1.a. ETH DMA Rx descriptors must be contiguous, the default count is 4,
        to customize it please redefine ETH_RX_DESC_CNT in ETH GUI (Rx Descriptor Length)
@@ -108,10 +104,6 @@ __attribute__((section(".Rx_PoolSection"))) extern u8_t memp_memory_RX_POOL_base
 __attribute__((section(".Rx_PoolSection"))) extern u8_t memp_memory_RX_POOL_base[];
 #endif
 
-/* USER CODE BEGIN 2 */
-
-/* USER CODE END 2 */
-
 /* Global Ethernet handle */
 ETH_HandleTypeDef heth;
 ETH_TxPacketConfig TxConfig;
@@ -130,17 +122,8 @@ lan8742_IOCtx_t  LAN8742_IOCtx = {ETH_PHY_IO_Init,
                                   ETH_PHY_IO_ReadReg,
                                   ETH_PHY_IO_GetTick};
 
-/* USER CODE BEGIN 3 */
-
-/* USER CODE END 3 */
-
 /* Private functions ---------------------------------------------------------*/
 void pbuf_free_custom(struct pbuf *p);
-
-/* USER CODE BEGIN 4 */
-//static void ethernet_link_status_updated(struct netif *netif);
-
-/* USER CODE END 4 */
 
 /*******************************************************************************
                        LL Driver Interface ( LwIP stack --> ETH)
@@ -170,10 +153,6 @@ static void low_level_init(struct netif *netif)
   heth.Init.TxDesc = DMATxDscrTab;
   heth.Init.RxDesc = DMARxDscrTab;
   heth.Init.RxBuffLen = 1536;
-
-  /* USER CODE BEGIN MACADDRESS */
-
-  /* USER CODE END MACADDRESS */
 
   hal_eth_init_status = HAL_ETH_Init(&heth);
 
@@ -354,12 +333,7 @@ static err_t low_level_output_arp_off(struct netif *netif, struct pbuf *q, const
   err_t errval;
   errval = ERR_OK;
 
-/* USER CODE BEGIN 5 */
-
-/* USER CODE END 5 */
-
   return errval;
-
 }
 #endif /* LWIP_ARP */
 
@@ -414,7 +388,6 @@ err_t ethernetif_init(struct netif *netif)
 #endif /* LWIP_IPV6 */
 
   netif->linkoutput = low_level_output;
-
   /* initialize the hardware */
   low_level_init(netif);
 
@@ -440,8 +413,6 @@ void pbuf_free_custom(struct pbuf *p)
   }
 }
 
-/* USER CODE BEGIN 6 */
-
 /**
 * @brief  Returns the current time in milliseconds
 *         when LWIP_TIMERS == 1 and NO_SYS == 1
@@ -452,8 +423,6 @@ u32_t sys_now(void)
 {
   return HAL_GetTick();
 }
-
-/* USER CODE END 6 */
 
 /**
   * @brief  Initializes the ETH MSP.
@@ -466,9 +435,6 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   if(ethHandle->Instance==ETH)
   {
-  /* USER CODE BEGIN ETH_MspInit 0 */
-
-  /* USER CODE END ETH_MspInit 0 */
     /* Enable Peripheral clock */
     __HAL_RCC_ETH1MAC_CLK_ENABLE();
     __HAL_RCC_ETH1TX_CLK_ENABLE();
@@ -512,9 +478,6 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     /* Peripheral interrupt init */
     HAL_NVIC_SetPriority(ETH_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(ETH_IRQn);
-  /* USER CODE BEGIN ETH_MspInit 1 */
-
-  /* USER CODE END ETH_MspInit 1 */
   }
 }
 
@@ -522,9 +485,6 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* ethHandle)
 {
   if(ethHandle->Instance==ETH)
   {
-  /* USER CODE BEGIN ETH_MspDeInit 0 */
-
-  /* USER CODE END ETH_MspDeInit 0 */
     /* Disable Peripheral clock */
     __HAL_RCC_ETH1MAC_CLK_DISABLE();
     __HAL_RCC_ETH1TX_CLK_DISABLE();
@@ -549,10 +509,6 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* ethHandle)
 
     /* Peripheral interrupt Deinit*/
     HAL_NVIC_DisableIRQ(ETH_IRQn);
-
-  /* USER CODE BEGIN ETH_MspDeInit 1 */
-
-  /* USER CODE END ETH_MspDeInit 1 */
   }
 }
 
@@ -599,7 +555,6 @@ int32_t ETH_PHY_IO_ReadReg(uint32_t DevAddr, uint32_t RegAddr, uint32_t *pRegVal
   {
     return -1;
   }
-
   return 0;
 }
 
@@ -645,15 +600,20 @@ void ethernet_link_check_state(struct netif *netif)
     /* ================= LINK DOWN ================= */
     if (PHYLinkState <= LAN8742_STATUS_LINK_DOWN)
     {
-        if (netif_is_link_up(netif))
-        {
-            DebugUART_Print("[ETH] Link DOWN\r\n");
+    	if (!netif_is_link_up(netif))
+    	{
+    	    DebugUART_Print("[ETH] Link UP\r\n");
 
-            HAL_ETH_Stop_IT(&heth);
+    	    HAL_ETH_GetMACConfig(&heth, &MACConf);
+    	    MACConf.Speed = speed;
+    	    MACConf.DuplexMode = duplex;
+    	    HAL_ETH_SetMACConfig(&heth, &MACConf);
 
-            netif_set_link_down(netif);
-            netif_set_down(netif);
-        }
+    	    HAL_ETH_Start_IT(&heth);
+
+    	    netif_set_up(netif);        // ← ВАЖНО
+    	    netif_set_link_up(netif);   // ← ВАЖНО
+    	}
         return;
     }
 
@@ -706,18 +666,27 @@ void ethernet_link_check_state(struct netif *netif)
     }
 }
 
+static uint8_t tcp_server_started = 0;
+
+/*
 static void ethernet_link_status_updated(struct netif *netif)
 {
     if (netif_is_link_up(netif))
     {
         DebugUART_Print("[LWIP] Netif LINK UP\r\n");
+        if (!tcp_server_started)
+                {
+                    tcp_server_started = 1;
+                    DebugUART_Print("[TCP] Starting TCP server\r\n");
+                    RawTcpServer_Init();
+                }
     }
     else
     {
         DebugUART_Print("[LWIP] Netif LINK DOWN\r\n");
     }
 }
-
+*/
 
 void HAL_ETH_RxAllocateCallback(uint8_t **buff)
 {
@@ -743,8 +712,6 @@ void HAL_ETH_RxAllocateCallback(uint8_t **buff)
 
 void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd, uint8_t *buff, uint16_t Length)
 {
-/* USER CODE BEGIN HAL ETH RxLinkCallback */
-
   struct pbuf **ppStart = (struct pbuf **)pStart;
   struct pbuf **ppEnd = (struct pbuf **)pEnd;
   struct pbuf *p = NULL;
@@ -777,20 +744,12 @@ void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd, uint8_t *buff, uint16_t 
 
   /* Invalidate data cache because Rx DMA's writing to physical memory makes it stale. */
   SCB_InvalidateDCache_by_Addr((uint32_t *)buff, Length);
-
-/* USER CODE END HAL ETH RxLinkCallback */
 }
 
 void HAL_ETH_TxFreeCallback(uint32_t * buff)
 {
-/* USER CODE BEGIN HAL ETH TxFreeCallback */
-
   pbuf_free((struct pbuf *)buff);
 
-/* USER CODE END HAL ETH TxFreeCallback */
 }
 
-/* USER CODE BEGIN 8 */
-
-/* USER CODE END 8 */
 

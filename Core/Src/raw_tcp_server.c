@@ -25,6 +25,8 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb,
         return ERR_OK;
     }
 
+    DebugUART_Print("[TCP] RX %d bytes\r\n", p->tot_len);
+
     /* Сообщаем lwIP, что данные приняты */
     tcp_recved(tpcb, p->tot_len);
 
@@ -40,6 +42,8 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     LWIP_UNUSED_ARG(arg);
     LWIP_UNUSED_ARG(err);
 
+    DebugUART_Print("[TCP] Client connected\r\n");
+
     tcp_recv(newpcb, tcp_server_recv);
     tcp_nagle_disable(newpcb);
 
@@ -51,8 +55,13 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
 void RawTcpServer_Init(void)
 {
     server_pcb = tcp_new();
-    if (!server_pcb)
+    if (!server_pcb){
+    	DebugUART_Print("[TCP] Raw TCP server init dead");
         return;
+    }
+
+    DebugUART_Print("[TCP] Raw TCP server init on port %d\r\n", TCP_SERVER_PORT);
+
 
     if (tcp_bind(server_pcb, IP_ADDR_ANY, TCP_SERVER_PORT) != ERR_OK)
         return;
