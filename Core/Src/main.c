@@ -6,6 +6,8 @@
 #include "main.h"
 #include "lwip.h"
 
+#include "raw_tcp_server.h"
+
 extern void DebugUART_Print(const char *fmt, ...);
 
 /* Private variables ---------------------------------------------------------*/
@@ -55,10 +57,19 @@ int main(void)
   DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
   DebugUART_Print("GW: %s\r\n", ipaddr_ntoa(&gnetif.gw));
 
+  //RawTcpServer_Init();  //запуск сервера
+  static uint8_t tcp_started = 0;
+
   /* USER CODE END 2 */
   while (1)
   {
 	  MX_LWIP_Process();
+	  if (!tcp_started && netif_is_link_up(&gnetif))
+	      {
+	          tcp_started = 1;
+	          DebugUART_Print("[TCP] Starting TCP server\r\n");
+	          RawTcpServer_Init();
+	      }
   }
 }
 
@@ -212,3 +223,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
