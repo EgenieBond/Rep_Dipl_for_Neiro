@@ -1,9 +1,22 @@
+/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
   * File Name          : LWIP.c
   * Description        : This file provides initialization code for LWIP
   *                      middleWare.
-*/
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
 #include "lwip.h"
@@ -13,14 +26,21 @@
 #include "lwip/sio.h"
 #endif /* MDK ARM Compiler */
 #include "ethernetif.h"
+#include <string.h>
 
+/* USER CODE BEGIN 0 */
+#include "lwip/tcpip.h"
+#include "debug_uart.h"
+#include "raw_tcp_server.h"
+/* USER CODE END 0 */
 /* Private function prototypes -----------------------------------------------*/
 static void ethernet_link_status_updated(struct netif *netif);
-static void Ethernet_Link_Periodic_Handle(struct netif *netif);
 /* ETH Variables initialization ----------------------------------------------*/
 void Error_Handler(void);
 
-uint32_t EthernetLinkTimer;
+/* USER CODE BEGIN 1 */
+
+/* USER CODE END 1 */
 
 /* Variables Initialization */
 struct netif gnetif;
@@ -30,34 +50,44 @@ ip4_addr_t gw;
 uint8_t IP_ADDRESS[4];
 uint8_t NETMASK_ADDRESS[4];
 uint8_t GATEWAY_ADDRESS[4];
+/* USER CODE BEGIN OS_THREAD_ATTR_CMSIS_RTOS_V2 */
+#define INTERFACE_THREAD_STACK_SIZE ( 1024 )
+osThreadAttr_t attributes;
+/* USER CODE END OS_THREAD_ATTR_CMSIS_RTOS_V2 */
 
+/* USER CODE BEGIN 2 */
+
+/* USER CODE END 2 */
+
+/**
+  * LwIP initialization function
+  */
 void MX_LWIP_Init(void)
 {
-    DebugUART_Print("[LWIP] >>> ENTER MX_LWIP_Init <<<\r\n");
+  ip4_addr_t ipaddr;
+  ip4_addr_t netmask;
+  ip4_addr_t gw;
 
-    lwip_init();
+  DebugUART_Print("[LWIP] tcpip_init\r\n");
 
-    IP4_ADDR(&ipaddr,  192, 168, 1, 50);
-    IP4_ADDR(&netmask, 255, 255, 255, 0);
-    IP4_ADDR(&gw,      192, 168, 1, 1);
+  tcpip_init(NULL, NULL);
 
-    netif_add(&gnetif,
-              &ipaddr,
-              &netmask,
-              &gw,
-              NULL,
-              ethernetif_init,
-              ethernet_input);
+  /* Static IP configuration */
+  IP4_ADDR(&ipaddr,  192, 168, 1, 50);
+  IP4_ADDR(&netmask, 255, 255, 255, 0);
+  IP4_ADDR(&gw,      192, 168, 1, 1);
 
-    netif_set_default(&gnetif);
-    netif_set_up(&gnetif);
+  netif_add(&gnetif, &ipaddr, &netmask, &gw,
+            NULL, ethernetif_init, tcpip_input);
 
-    DebugUART_Print("[LWIP] Static IP configured\r\n");
-    DebugUART_Print("IP:   %s\r\n", ipaddr_ntoa(&gnetif.ip_addr));
-    DebugUART_Print("MASK: %s\r\n", ipaddr_ntoa(&gnetif.netmask));
-    DebugUART_Print("GW:   %s\r\n", ipaddr_ntoa(&gnetif.gw));
+  netif_set_default(&gnetif);
+  netif_set_up(&gnetif);
+
+  DebugUART_Print("[LWIP] Netif up\r\n");
+
+  /* Start TCP server (RAW API) */
+  RawTcpServer_Init();
 }
-
 
 #ifdef USE_OBSOLETE_USER_CODE_SECTION_4
 /* Kept to help code migration. (See new 4_1, 4_2... sections) */
@@ -66,47 +96,24 @@ void MX_LWIP_Init(void)
 /* USER CODE END 4 */
 #endif
 
-static void Ethernet_Link_Periodic_Handle(struct netif *netif)
-{
-  /* Ethernet Link every 100ms */
-  if (HAL_GetTick() - EthernetLinkTimer >= 100)
-  {
-    EthernetLinkTimer = HAL_GetTick();
-    ethernet_link_check_state(netif);
-  }
-}
-
 /**
- * ----------------------------------------------------------------------
- * Function given to help user to continue LwIP Initialization
- * Up to user to complete or change this function ...
- * Up to user to call this function in main.c in while (1) of main(void)
- *-----------------------------------------------------------------------
- * Read a received packet from the Ethernet buffers
- * Send it to the lwIP stack for handling
- * Handle timeouts if LWIP_TIMERS is set and without RTOS
- * Handle the llink status if LWIP_NETIF_LINK_CALLBACK is set and without RTOS
- */
-void MX_LWIP_Process(void)
-{
-  ethernetif_input(&gnetif);
-  /* Handle timeouts */
-  sys_check_timeouts();
-
-  Ethernet_Link_Periodic_Handle(&gnetif);
-}
-
-/*
+  * @brief  Notify the User about the network interface config status
+  * @param  netif: the network interface
+  * @retval None
+  */
 static void ethernet_link_status_updated(struct netif *netif)
 {
   if (netif_is_up(netif))
   {
+/* USER CODE BEGIN 5 */
+/* USER CODE END 5 */
   }
-  else // netif is down
+  else /* netif is down */
   {
+/* USER CODE BEGIN 6 */
+/* USER CODE END 6 */
   }
 }
-*/
 
 #if defined ( __CC_ARM )  /* MDK ARM Compiler */
 /**
@@ -115,11 +122,14 @@ static void ethernet_link_status_updated(struct netif *netif)
  * @param devnum device number
  * @return handle to serial device if successful, NULL otherwise
  */
-
 sio_fd_t sio_open(u8_t devnum)
 {
   sio_fd_t sd;
+
+/* USER CODE BEGIN 7 */
   sd = 0; // dummy code
+/* USER CODE END 7 */
+
   return sd;
 }
 
@@ -133,6 +143,8 @@ sio_fd_t sio_open(u8_t devnum)
  */
 void sio_send(u8_t c, sio_fd_t fd)
 {
+/* USER CODE BEGIN 8 */
+/* USER CODE END 8 */
 }
 
 /**
@@ -149,7 +161,10 @@ void sio_send(u8_t c, sio_fd_t fd)
 u32_t sio_read(sio_fd_t fd, u8_t *data, u32_t len)
 {
   u32_t recved_bytes;
+
+/* USER CODE BEGIN 9 */
   recved_bytes = 0; // dummy code
+/* USER CODE END 9 */
   return recved_bytes;
 }
 
@@ -165,7 +180,10 @@ u32_t sio_read(sio_fd_t fd, u8_t *data, u32_t len)
 u32_t sio_tryread(sio_fd_t fd, u8_t *data, u32_t len)
 {
   u32_t recved_bytes;
+
+/* USER CODE BEGIN 10 */
   recved_bytes = 0; // dummy code
+/* USER CODE END 10 */
   return recved_bytes;
 }
 #endif /* MDK ARM Compiler */

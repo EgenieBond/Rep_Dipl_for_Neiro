@@ -9,5 +9,6 @@
 #define RAW_TCP_SERVER_H
 
 void RawTcpServer_Init(void);
+void RawTcpServer_PrintStatus(void);
 
 #endif
