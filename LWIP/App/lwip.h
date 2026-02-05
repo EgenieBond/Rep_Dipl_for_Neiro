@@ -35,14 +35,10 @@
 #include "lwip/timeouts.h"
 #include "ethernetif.h"
 
-extern struct netif gnetif;
-
 /* Includes for RTOS ---------------------------------------------------------*/
 #if WITH_RTOS
 #include "lwip/tcpip.h"
 #endif /* WITH_RTOS */
-
-
 
 /* USER CODE BEGIN 0 */
 

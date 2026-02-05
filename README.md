@@ -1,23 +1,36 @@
-Последняя версия (30.01)
+Это ветка с "черновиками" - прогой, которая пока не до конца правильно работает
 
-57600   - скорость в Путти
+Текущая проблема: 
+Первый проход — НОРМАЛЬНЫЙ
+✔ PHY инициализировался
+✔ Link поднялся
+✔ DHCP стартовал
+Второй проход — ОШИБОЧНЫЙ
+❌ PHY init FAILED
+❌ PHY state = 4294967291
+❌ low_level_init() вызывается ещё раз
+КЛЮЧЕВАЯ ПРОБЛЕМА: low_level_init() вызывается ПОВТОРНО
 
-- реализован статический IP
 [LWIP] >>> ENTER MX_LWIP_Init <<<
-[LWIP] Static IP configured
-IP:   192.168.1.50
-MASK: 255.255.255.0
-GW:   192.168.1.1
+[LWIP] MX_LWIP_Init @ 0x8007161, file=../LWIP/App/lwip.c
+[ETH] low_level_init()
+[ETH] LAN8742 init...
+[ETH] PHY init OK
+[LWIP] Init done, waiting for link UP
 ETH link: DOWN
-IP: 192.168.1.50
-MASK: 255.255.255.0
-GW: 192.168.1.1
+IP: 0.0.0.0
+MASK: 0.0.0.0
+GW: 0.0.0.0
+[ETH] Link UP -> start MAC
+[DHCP] dhcp_start()
+[ETH] low_level_init()
+[ETH] MAC started
+[ETH] PHY init FAILED
+[LWIP] Init done, waiting for link UP
+ETH link: DOWN
+IP: 0.0.0.0
+MASK: 0.0.0.0
+GW: 0.0.0.0
+[ETH] Link UP (PHY state=4294967291)
+[ETH] Link UP -> netif UP + DHCP
 
-Проблема: что-то с PHY
-ETH link: DOWN = физического Ethernet-соединения нет.
-Когда LINK = DOWN, Сервер:
-❌ НЕ доступен по сети
-❌ НЕ принимает TCP/UDP пакеты
-❌ ping не проходит
-❌ ПК не может подключиться
-❌ Клиент просто «не видит» устройство
