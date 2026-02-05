@@ -1,36 +1,26 @@
 Это ветка с "черновиками" - прогой, которая пока не до конца правильно работает
 
-Текущая проблема: 
-Первый проход — НОРМАЛЬНЫЙ
-✔ PHY инициализировался
-✔ Link поднялся
-✔ DHCP стартовал
-Второй проход — ОШИБОЧНЫЙ
-❌ PHY init FAILED
-❌ PHY state = 4294967291
-❌ low_level_init() вызывается ещё раз
-КЛЮЧЕВАЯ ПРОБЛЕМА: low_level_init() вызывается ПОВТОРНО
+Изменения:
+1. Удален sys_arch.c
+2. Добавлены файлы FreeRTOS:
+   - freertos.c, FreeRTOSConfig.h
+3. Добавлена Ethernet задача:
+   - ethernet_task.c, ethernet_task.h
+4. Обновлены основные файлы проекта
+5. Обновлена конфигурация LWIP
 
-[LWIP] >>> ENTER MX_LWIP_Init <<<
-[LWIP] MX_LWIP_Init @ 0x8007161, file=../LWIP/App/lwip.c
-[ETH] low_level_init()
-[ETH] LAN8742 init...
-[ETH] PHY init OK
-[LWIP] Init done, waiting for link UP
-ETH link: DOWN
-IP: 0.0.0.0
-MASK: 0.0.0.0
-GW: 0.0.0.0
-[ETH] Link UP -> start MAC
-[DHCP] dhcp_start()
-[ETH] low_level_init()
-[ETH] MAC started
-[ETH] PHY init FAILED
-[LWIP] Init done, waiting for link UP
-ETH link: DOWN
-IP: 0.0.0.0
-MASK: 0.0.0.0
-GW: 0.0.0.0
-[ETH] Link UP (PHY state=4294967291)
-[ETH] Link UP -> netif UP + DHCP
+Проблема (вывод в путти):
 
+=== System start ===
+Starting scheduler...
+[ETH] Ethernet task started
+[LWIP] tcpip_init
+[LWIP] Netif added
+[ETH] Netif UP
+[ETH] IP   : 192.168.1.50
+
+=== System start ===
+Starting scheduler...
+[ETH] Ethernet task started
+[LWIP] tcpip_init
+[LWIP] Netif added
