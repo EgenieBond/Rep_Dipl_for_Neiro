@@ -2,8 +2,9 @@
 
 57600   - скорость в Путти
 --------
-cd C:\Users\Egenie\Desktop
-py simple_test.py   - запуск клиента
+- cd C:\Users\Egenie\Desktop
+- py simple_test.py   - запуск клиента
+- py test_client.py   - запуск теста
 
 вот такой вывод в путти: 
 === System start === 
