@@ -234,7 +234,10 @@ static void low_level_init(struct netif *netif)
   heth.Init.RxBuffLen = 1536;
 
   /* USER CODE BEGIN MACADDRESS */
-
+  DebugUART_Print("[ETH] Initializing Ethernet hardware...\r\n");
+    DebugUART_Print("[ETH] MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                   MACAddr[0], MACAddr[1], MACAddr[2],
+                   MACAddr[3], MACAddr[4], MACAddr[5]);
   /* USER CODE END MACADDRESS */
 
   hal_eth_init_status = HAL_ETH_Init(&heth);
@@ -283,7 +286,7 @@ static void low_level_init(struct netif *netif)
 /* USER CODE BEGIN OS_THREAD_NEW_CMSIS_RTOS_V2 */
   memset(&attributes, 0x0, sizeof(osThreadAttr_t));
   attributes.name = "EthIf";
-  attributes.stack_size = INTERFACE_THREAD_STACK_SIZE;
+  attributes.stack_size = 1024;
   attributes.priority = osPriorityRealtime;
   osThreadNew(ethernetif_input, netif, &attributes);
 /* USER CODE END OS_THREAD_NEW_CMSIS_RTOS_V2 */
@@ -667,12 +670,8 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
     /* Peripheral interrupt init */
-    //HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
-    //HAL_NVIC_EnableIRQ(ETH_IRQn);
-
-    HAL_NVIC_SetPriority(ETH_IRQn, 6, 0);
+    HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(ETH_IRQn);
-
   /* USER CODE BEGIN ETH_MspInit 1 */
 
   /* USER CODE END ETH_MspInit 1 */
@@ -843,32 +842,23 @@ void ethernet_link_thread(void* argument)
       break;
     }
 
-    if (linkchanged)
+    if(linkchanged)
     {
-        HAL_ETH_GetMACConfig(&heth, &MACConf);
-        MACConf.DuplexMode = duplex;
-        MACConf.Speed = speed;
-        HAL_ETH_SetMACConfig(&heth, &MACConf);
-
-        HAL_ETH_Start_IT(&heth);
-
-        netif_set_up(netif);
-        netif_set_link_up(netif);
-
-        DebugUART_Print("[ETH] Link UP\r\n");
-
-        /* ждём, пока интерфейс полностью поднимется */
-        while (!netif_is_up(netif))
-        {
-            osDelay(100);
-        }
-
-        /* TCP RAW API — ТОЛЬКО через tcpip_thread */
-        tcpip_callback((tcpip_callback_fn)RawTcpServer_Init, NULL);
+      /* Get MAC Config MAC */
+      HAL_ETH_GetMACConfig(&heth, &MACConf);
+      MACConf.DuplexMode = duplex;
+      MACConf.Speed = speed;
+      HAL_ETH_SetMACConfig(&heth, &MACConf);
+      HAL_ETH_Start_IT(&heth);
+      netif_set_up(netif);
+      netif_set_link_up(netif);
     }
   }
+
 /* USER CODE BEGIN ETH link Thread core code for User BSP */
+
 /* USER CODE END ETH link Thread core code for User BSP */
+
     osDelay(100);
   }
 }

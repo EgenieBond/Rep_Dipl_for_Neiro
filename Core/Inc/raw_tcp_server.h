@@ -8,7 +8,14 @@
 #ifndef RAW_TCP_SERVER_H
 #define RAW_TCP_SERVER_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void RawTcpServer_Init(void);
-//void RawTcpServer_PrintStatus(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
