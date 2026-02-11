@@ -34,6 +34,7 @@
 /* Within 'USER CODE' section, code will be kept by default at each generation */
 /* USER CODE BEGIN 0 */
 #include "raw_tcp_server.h"
+extern struct netif gnetif;
 /* USER CODE END 0 */
 
 /* Private define ------------------------------------------------------------*/
@@ -105,23 +106,25 @@ static uint8_t RxAllocStatus;
 
 #pragma location=0x30000000
 ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-#pragma location=0x30000080
+#pragma location=0x30000200  /* ← ИЗМЕНИТЬ: 0x30000080 → 0x30000200 */
 ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
 
 #elif defined ( __CC_ARM )  /* MDK ARM Compiler */
 
 __attribute__((at(0x30000000))) ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-__attribute__((at(0x30000080))) ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
+__attribute__((at(0x30000200))) ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */  /* ← ИЗМЕНИТЬ */
 
 #elif defined ( __GNUC__ ) /* GNU Compiler */
 
 ETH_DMADescTypeDef DMARxDscrTab[ETH_RX_DESC_CNT] __attribute__((section(".RxDecripSection"))); /* Ethernet Rx DMA Descriptors */
 ETH_DMADescTypeDef DMATxDscrTab[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")));   /* Ethernet Tx DMA Descriptors */
+/* ⚠️ ДЛЯ GCC НУЖНО ЕЩЕ ПОПРАВИТЬ .ld ФАЙЛ! */
+/* Если используете GCC - напишите, я дам правки для .ld файла */
 
 #endif
 
 #if defined ( __ICCARM__ ) /*!< IAR Compiler */
-#pragma location = 0x30000100
+#pragma location = 0x30000100  /* ← ЭТО НЕ ТРОГАЕМ, ЭТО RX POOL */
 extern u8_t memp_memory_RX_POOL_base[];
 
 #elif defined ( __CC_ARM ) /* MDK ARM Compiler */
@@ -157,7 +160,54 @@ lan8742_IOCtx_t  LAN8742_IOCtx = {ETH_PHY_IO_Init,
                                   ETH_PHY_IO_GetTick};
 
 /* USER CODE BEGIN 3 */
+/* ОТЛАДКА ARP - ВРЕМЕННО (вызывается в low_level_input тут же) */
+static void debug_arp_packet(struct pbuf *p)
+{
+    if (p->tot_len < 42) return;
 
+    uint8_t header[42];
+    uint16_t copied = 0;
+    struct pbuf *q = p;
+
+    while (q != NULL && copied < 42) {
+        uint16_t to_copy = q->len;
+        if (copied + to_copy > 42) to_copy = 42 - copied;
+        memcpy(header + copied, q->payload, to_copy);
+        copied += to_copy;
+        q = q->next;
+    }
+
+    uint16_t eth_type = (header[12] << 8) | header[13];
+
+    if (eth_type == 0x0806) {
+        uint16_t arp_op = (header[20] << 8) | header[21];
+        DebugUART_Print("[ARP] Received packet, opcode: %d\r\n", arp_op);
+
+        if (arp_op == 1) {
+            uint32_t target_ip = (header[38] << 24) | (header[39] << 16) |
+                                 (header[40] << 8) | header[41];
+            DebugUART_Print("[ARP] Request for IP: %d.%d.%d.%d\r\n",
+                          header[38], header[39], header[40], header[41]);
+
+            if (target_ip == 0x0A000064) {  // 10.0.0.100
+                DebugUART_Print("[ARP] !!! OUR IP - FORCING REPLY !!!\r\n");
+
+                // ПРОВЕРКА TX
+                struct netif *netif = &gnetif;
+                ip4_addr_t ipaddr;
+                IP4_ADDR(&ipaddr, 10, 0, 0, 2);  // IP ПК
+
+                DebugUART_Print("[ARP] Calling etharp_output...\r\n");
+                err_t err = etharp_output(netif, p, &ipaddr);
+                DebugUART_Print("[ARP] etharp_output returned: %d\r\n", err);
+
+                if (err != ERR_OK) {
+                    DebugUART_Print("[ARP] ERROR: etharp_output failed!\r\n");
+                }
+            }
+        }
+    }
+}
 /* USER CODE END 3 */
 
 /* Private functions ---------------------------------------------------------*/
@@ -234,7 +284,10 @@ static void low_level_init(struct netif *netif)
   heth.Init.RxBuffLen = 1536;
 
   /* USER CODE BEGIN MACADDRESS */
-
+  DebugUART_Print("[ETH] Initializing Ethernet hardware...\r\n");
+    DebugUART_Print("[ETH] MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                   MACAddr[0], MACAddr[1], MACAddr[2],
+                   MACAddr[3], MACAddr[4], MACAddr[5]);
   /* USER CODE END MACADDRESS */
 
   hal_eth_init_status = HAL_ETH_Init(&heth);
@@ -283,7 +336,7 @@ static void low_level_init(struct netif *netif)
 /* USER CODE BEGIN OS_THREAD_NEW_CMSIS_RTOS_V2 */
   memset(&attributes, 0x0, sizeof(osThreadAttr_t));
   attributes.name = "EthIf";
-  attributes.stack_size = INTERFACE_THREAD_STACK_SIZE;
+  attributes.stack_size = 1024;
   attributes.priority = osPriorityRealtime;
   osThreadNew(ethernetif_input, netif, &attributes);
 /* USER CODE END OS_THREAD_NEW_CMSIS_RTOS_V2 */
@@ -419,28 +472,31 @@ static err_t low_level_output(struct netif *netif, struct pbuf *p)
 
   do
   {
-    if(HAL_ETH_Transmit_IT(&heth, &TxConfig) == HAL_OK)
-    {
-      errval = ERR_OK;
-    }
-    else
-    {
-
-      if(HAL_ETH_GetError(&heth) & HAL_ETH_ERROR_BUSY)
+      if(HAL_ETH_Transmit_IT(&heth, &TxConfig) == HAL_OK)
       {
-        /* Wait for descriptors to become available */
-        osSemaphoreAcquire(TxPktSemaphore, ETHIF_TX_TIMEOUT);
-        HAL_ETH_ReleaseTxPacket(&heth);
-        errval = ERR_BUF;
+          errval = ERR_OK;
+          DebugUART_Print("[TX] Transmit OK\r\n");
       }
       else
       {
-        /* Other error */
-        pbuf_free(p);
-        errval =  ERR_IF;
+          uint32_t error = HAL_ETH_GetError(&heth);
+          DebugUART_Print("[TX] Transmit failed, error: %lu\r\n", error);
+
+          if(error & HAL_ETH_ERROR_BUSY)
+          {
+              DebugUART_Print("[TX] Waiting for descriptors...\r\n");
+              /* Ждем освобождения дескрипторов */
+              osSemaphoreAcquire(TxPktSemaphore, ETHIF_TX_TIMEOUT);
+              HAL_ETH_ReleaseTxPacket(&heth);
+              errval = ERR_BUF;  // Пробуем снова
+          }
+          else
+          {
+              pbuf_free(p);
+              errval = ERR_IF;
+          }
       }
-    }
-  }while(errval == ERR_BUF);
+  } while(errval == ERR_BUF);
 
   return errval;
 }
@@ -460,6 +516,16 @@ static struct pbuf * low_level_input(struct netif *netif)
   if(RxAllocStatus == RX_ALLOC_OK)
   {
     HAL_ETH_ReadData(&heth, (void **)&p);
+
+    /* USER CODE BEGIN DEBUG_INPUT */
+    if (p != NULL) {
+        static int packet_count = 0;
+        packet_count++;
+        DebugUART_Print("[ETH] Received packet #%d, len=%d, tot_len=%d\r\n",
+                       packet_count, p->len, p->tot_len);
+        debug_arp_packet(p);  // ОТЛАДКА ARP
+    }
+    /* USER CODE END DEBUG_INPUT */
   }
 
   return p;
@@ -667,12 +733,8 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
     /* Peripheral interrupt init */
-    //HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
-    //HAL_NVIC_EnableIRQ(ETH_IRQn);
-
-    HAL_NVIC_SetPriority(ETH_IRQn, 6, 0);
+    HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(ETH_IRQn);
-
   /* USER CODE BEGIN ETH_MspInit 1 */
 
   /* USER CODE END ETH_MspInit 1 */
@@ -843,32 +905,23 @@ void ethernet_link_thread(void* argument)
       break;
     }
 
-    if (linkchanged)
+    if(linkchanged)
     {
-        HAL_ETH_GetMACConfig(&heth, &MACConf);
-        MACConf.DuplexMode = duplex;
-        MACConf.Speed = speed;
-        HAL_ETH_SetMACConfig(&heth, &MACConf);
-
-        HAL_ETH_Start_IT(&heth);
-
-        netif_set_up(netif);
-        netif_set_link_up(netif);
-
-        DebugUART_Print("[ETH] Link UP\r\n");
-
-        /* ждём, пока интерфейс полностью поднимется */
-        while (!netif_is_up(netif))
-        {
-            osDelay(100);
-        }
-
-        /* TCP RAW API — ТОЛЬКО через tcpip_thread */
-        tcpip_callback((tcpip_callback_fn)RawTcpServer_Init, NULL);
+      /* Get MAC Config MAC */
+      HAL_ETH_GetMACConfig(&heth, &MACConf);
+      MACConf.DuplexMode = duplex;
+      MACConf.Speed = speed;
+      HAL_ETH_SetMACConfig(&heth, &MACConf);
+      HAL_ETH_Start_IT(&heth);
+      netif_set_up(netif);
+      netif_set_link_up(netif);
     }
   }
+
 /* USER CODE BEGIN ETH link Thread core code for User BSP */
+
 /* USER CODE END ETH link Thread core code for User BSP */
+
     osDelay(100);
   }
 }
