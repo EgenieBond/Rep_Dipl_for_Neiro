@@ -63,20 +63,18 @@ osThreadAttr_t attributes;
 void MX_LWIP_Init(void)
 {
   /* IP addresses initialization */
-  IP_ADDRESS[0] = 192;
-  IP_ADDRESS[1] = 168;
-  IP_ADDRESS[2] = 50;
-  IP_ADDRESS[3] = 100;
-
-  NETMASK_ADDRESS[0] = 255;
-  NETMASK_ADDRESS[1] = 255;
-  NETMASK_ADDRESS[2] = 255;
+  IP_ADDRESS[0] = 0;
+  IP_ADDRESS[1] = 0;
+  IP_ADDRESS[2] = 0;
+  IP_ADDRESS[3] = 0;
+  NETMASK_ADDRESS[0] = 0;
+  NETMASK_ADDRESS[1] = 0;
+  NETMASK_ADDRESS[2] = 0;
   NETMASK_ADDRESS[3] = 0;
-
-  GATEWAY_ADDRESS[0] = 192;
-  GATEWAY_ADDRESS[1] = 168;
-  GATEWAY_ADDRESS[2] = 50;
-  GATEWAY_ADDRESS[3] = 1;
+  GATEWAY_ADDRESS[0] = 0;
+  GATEWAY_ADDRESS[1] = 0;
+  GATEWAY_ADDRESS[2] = 0;
+  GATEWAY_ADDRESS[3] = 0;
 
 /* USER CODE BEGIN IP_ADDRESSES */
   DebugUART_Print("[LWIP] Starting tcpip_init...\r\n");
@@ -85,28 +83,19 @@ void MX_LWIP_Init(void)
   /* Initialize the LwIP stack with RTOS */
   tcpip_init( NULL, NULL );
 
-  DebugUART_Print("[LWIP] tcpip_init complete\r\n");
-
   /* IP addresses initialization without DHCP (IPv4) */
   IP4_ADDR(&ipaddr, IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]);
   IP4_ADDR(&netmask, NETMASK_ADDRESS[0], NETMASK_ADDRESS[1] , NETMASK_ADDRESS[2], NETMASK_ADDRESS[3]);
   IP4_ADDR(&gw, GATEWAY_ADDRESS[0], GATEWAY_ADDRESS[1], GATEWAY_ADDRESS[2], GATEWAY_ADDRESS[3]);
 
-  DebugUART_Print("[LWIP] IP: %d.%d.%d.%d\r\n",
-                 IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]);
-
   /* add the network interface (IPv4/IPv6) with RTOS */
   netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init, &tcpip_input);
-
-  DebugUART_Print("[LWIP] Netif added\r\n");
 
   /* Registers the default network interface */
   netif_set_default(&gnetif);
 
   /* We must always bring the network interface up connection or not... */
   netif_set_up(&gnetif);
-
-  DebugUART_Print("[LWIP] Netif up\r\n");
 
   /* Set the link callback function, this function is called on change of link status*/
   netif_set_link_callback(&gnetif, ethernet_link_status_updated);
