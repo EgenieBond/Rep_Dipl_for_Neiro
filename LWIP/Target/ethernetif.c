@@ -33,7 +33,9 @@
 
 /* Within 'USER CODE' section, code will be kept by default at each generation */
 /* USER CODE BEGIN 0 */
-
+#include "raw_tcp_server.h"
+#include <stdint.h>
+extern struct netif gnetif;
 /* USER CODE END 0 */
 
 /* Private define ------------------------------------------------------------*/
@@ -43,7 +45,7 @@
 #define ETHIF_TX_TIMEOUT (2000U)
 /* USER CODE BEGIN OS_THREAD_STACK_SIZE_WITH_RTOS */
 /* Stack size of the interface thread */
-#define INTERFACE_THREAD_STACK_SIZE ( 350 )
+#define INTERFACE_THREAD_STACK_SIZE ( 1024 )
 /* USER CODE END OS_THREAD_STACK_SIZE_WITH_RTOS */
 /* Network interface name */
 #define IFNAME0 's'
@@ -95,7 +97,7 @@ typedef struct
 } RxBuff_t;
 
 /* Memory Pool Declaration */
-#define ETH_RX_BUFFER_CNT             12U
+#define ETH_RX_BUFFER_CNT             6U
 LWIP_MEMPOOL_DECLARE(RX_POOL, ETH_RX_BUFFER_CNT, sizeof(RxBuff_t), "Zero-copy RX PBUF pool");
 
 /* Variable Definitions */
@@ -104,24 +106,34 @@ static uint8_t RxAllocStatus;
 #if defined ( __ICCARM__ ) /*!< IAR Compiler */
 
 #pragma location=0x30000000
-ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-#pragma location=0x30000080
-ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
+ /* Ethernet Rx DMA Descriptors */
+ETH_DMADescTypeDef DMARxDscrTab[ETH_RX_DESC_CNT]
+  __attribute__((section(".RxDecripSection"), aligned(32)));
+
+#pragma location=0x30000200  /* ← ИЗМЕНИТЬ: 0x30000080 → 0x30000200 */
+
+/* Ethernet Tx DMA Descriptors */
+ETH_DMADescTypeDef DMATxDscrTab[ETH_TX_DESC_CNT]
+  __attribute__((section(".TxDecripSection"), aligned(32)));
 
 #elif defined ( __CC_ARM )  /* MDK ARM Compiler */
 
 __attribute__((at(0x30000000))) ETH_DMADescTypeDef  DMARxDscrTab[ETH_RX_DESC_CNT]; /* Ethernet Rx DMA Descriptors */
-__attribute__((at(0x30000080))) ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */
+__attribute__((at(0x30000200))) ETH_DMADescTypeDef  DMATxDscrTab[ETH_TX_DESC_CNT]; /* Ethernet Tx DMA Descriptors */  /* ← ИЗМЕНИТЬ */
 
 #elif defined ( __GNUC__ ) /* GNU Compiler */
 
-ETH_DMADescTypeDef DMARxDscrTab[ETH_RX_DESC_CNT] __attribute__((section(".RxDecripSection"))); /* Ethernet Rx DMA Descriptors */
-ETH_DMADescTypeDef DMATxDscrTab[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")));   /* Ethernet Tx DMA Descriptors */
+ETH_DMADescTypeDef DMARxDscrTab[ETH_RX_DESC_CNT]
+  __attribute__((section(".RxDecripSection"))) __ALIGNED(32);
+
+ETH_DMADescTypeDef DMATxDscrTab[ETH_TX_DESC_CNT]
+  __attribute__((section(".TxDecripSection"))) __ALIGNED(32);
+
 
 #endif
 
 #if defined ( __ICCARM__ ) /*!< IAR Compiler */
-#pragma location = 0x30000100
+#pragma location = 0x30000100  /* ← ЭТО НЕ ТРОГАЕМ, ЭТО RX POOL */
 extern u8_t memp_memory_RX_POOL_base[];
 
 #elif defined ( __CC_ARM ) /* MDK ARM Compiler */
@@ -157,7 +169,34 @@ lan8742_IOCtx_t  LAN8742_IOCtx = {ETH_PHY_IO_Init,
                                   ETH_PHY_IO_GetTick};
 
 /* USER CODE BEGIN 3 */
+/* ОТЛАДКА ARP - ВРЕМЕННО (вызывается в low_level_input тут же) */
+static void debug_arp_packet(struct pbuf *p)
+{
+    if (p->tot_len < 42) return;
 
+    uint8_t header[42];
+    uint16_t copied = 0;
+    struct pbuf *q = p;
+
+    while (q != NULL && copied < 42) {
+        uint16_t to_copy = q->len;
+        if (copied + to_copy > 42) to_copy = 42 - copied;
+        memcpy(header + copied, q->payload, to_copy);
+        copied += to_copy;
+        q = q->next;
+    }
+
+    uint16_t eth_type = (header[12] << 8) | header[13];
+    if (eth_type != 0x0806) return;
+
+    uint16_t arp_op = (header[20] << 8) | header[21];
+    DebugUART_Print("[ARP] opcode: %u\r\n", arp_op);
+
+    if (arp_op == 1) {
+        DebugUART_Print("[ARP] who-has %d.%d.%d.%d\r\n",
+                        header[38], header[39], header[40], header[41]);
+    }
+}
 /* USER CODE END 3 */
 
 /* Private functions ---------------------------------------------------------*/
@@ -219,23 +258,30 @@ static void low_level_init(struct netif *netif)
   ETH_MACConfigTypeDef MACConf = {0};
   /* Start ETH HAL Init */
 
-   uint8_t MACAddr[6] ;
-  heth.Instance = ETH;
-  MACAddr[0] = 0x00;
-  MACAddr[1] = 0x80;
-  MACAddr[2] = 0xE1;
-  MACAddr[3] = 0x00;
-  MACAddr[4] = 0x00;
-  MACAddr[5] = 0x00;
-  heth.Init.MACAddr = &MACAddr[0];
+  static uint8_t MACAddr[6] __ALIGNED(4) = { 0x00, 0x80, 0xE1, 0x00, 0x00, 0x00 };
+  heth.Init.MACAddr = MACAddr;
+
   heth.Init.MediaInterface = HAL_ETH_RMII_MODE;
   heth.Init.TxDesc = DMATxDscrTab;
   heth.Init.RxDesc = DMARxDscrTab;
   heth.Init.RxBuffLen = 1536;
 
-  /* USER CODE BEGIN MACADDRESS */
+  DebugUART_Print("[LWIP] MEM_ALIGNMENT=%d\r\n", MEM_ALIGNMENT);
+  DebugUART_Print("[LWIP] LWIP_RAM_HEAP_POINTER=0x%08lX\r\n", (uint32_t)LWIP_RAM_HEAP_POINTER);
 
+
+  /* USER CODE BEGIN MACADDRESS */
+  DebugUART_Print("[ETH] Initializing Ethernet hardware...\r\n");
+    DebugUART_Print("[ETH] MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                   MACAddr[0], MACAddr[1], MACAddr[2],
+                   MACAddr[3], MACAddr[4], MACAddr[5]);
   /* USER CODE END MACADDRESS */
+
+    extern u8_t memp_memory_RX_POOL_base[];
+
+    DebugUART_Print("[ADDR] RxDesc=%p TxDesc=%p RX_POOL=%p\r\n",
+                   DMARxDscrTab, DMATxDscrTab, memp_memory_RX_POOL_base);
+
 
   hal_eth_init_status = HAL_ETH_Init(&heth);
 
@@ -283,7 +329,7 @@ static void low_level_init(struct netif *netif)
 /* USER CODE BEGIN OS_THREAD_NEW_CMSIS_RTOS_V2 */
   memset(&attributes, 0x0, sizeof(osThreadAttr_t));
   attributes.name = "EthIf";
-  attributes.stack_size = INTERFACE_THREAD_STACK_SIZE;
+  attributes.stack_size = 1024;
   attributes.priority = osPriorityRealtime;
   osThreadNew(ethernetif_input, netif, &attributes);
 /* USER CODE END OS_THREAD_NEW_CMSIS_RTOS_V2 */
@@ -301,6 +347,15 @@ static void low_level_init(struct netif *netif)
     netif_set_down(netif);
     return;
   }
+
+  DebugUART_Print("[PHY] LAN8742 DevAddr=%lu\r\n", (unsigned long)LAN8742.DevAddr);
+
+  uint32_t id1=0, id2=0, bsr=0;
+  HAL_ETH_ReadPHYRegister(&heth, LAN8742.DevAddr, 2, &id1);
+  HAL_ETH_ReadPHYRegister(&heth, LAN8742.DevAddr, 3, &id2);
+  HAL_ETH_ReadPHYRegister(&heth, LAN8742.DevAddr, 1, &bsr);
+  DebugUART_Print("[PHY] ID1=0x%04lX ID2=0x%04lX BSR=0x%04lX\r\n", id1, id2, bsr);
+
 
   if (hal_eth_init_status == HAL_OK)
   {
@@ -381,68 +436,128 @@ static void low_level_init(struct netif *netif)
  *       dropped because of memory failure (except for the TCP timers).
  */
 
+/* D-Cache line size on STM32H7 is 32 bytes */
+#define DCACHE_LINE_SIZE 32U
+
+static void invalidate_dcache_range(const void *addr, uint32_t len)
+{
+    if (len == 0U || addr == NULL) return;
+
+    uintptr_t start = (uintptr_t)addr;
+    uintptr_t end   = start + (uintptr_t)len;
+
+    uintptr_t start_aligned = start & ~(uintptr_t)(DCACHE_LINE_SIZE - 1U);
+    uintptr_t end_aligned   = (end + (DCACHE_LINE_SIZE - 1U)) & ~(uintptr_t)(DCACHE_LINE_SIZE - 1U);
+
+    SCB_InvalidateDCache_by_Addr((uint32_t*)start_aligned, (int32_t)(end_aligned - start_aligned));
+}
+
+
+static void clean_dcache_range(const void *addr, uint32_t len)
+{
+    if (len == 0U || addr == NULL) return;
+
+    uintptr_t start = (uintptr_t)addr;
+    uintptr_t end   = start + (uintptr_t)len;
+
+    /* Align start down to cache line, end up to cache line */
+    uintptr_t start_aligned = start & ~(uintptr_t)(DCACHE_LINE_SIZE - 1U);
+    uintptr_t end_aligned   = (end + (DCACHE_LINE_SIZE - 1U)) & ~(uintptr_t)(DCACHE_LINE_SIZE - 1U);
+
+    SCB_CleanDCache_by_Addr((uint32_t *)start_aligned, (int32_t)(end_aligned - start_aligned));
+}
+
 static err_t low_level_output(struct netif *netif, struct pbuf *p)
 {
-  uint32_t i = 0U;
-  struct pbuf *q = NULL;
-  err_t errval = ERR_OK;
-  ETH_BufferTypeDef Txbuffer[ETH_TX_DESC_CNT] = {0};
+    (void)netif;
 
-  memset(Txbuffer, 0 , ETH_TX_DESC_CNT*sizeof(ETH_BufferTypeDef));
+    uint32_t i = 0U;
+    struct pbuf *q = NULL;
+    err_t errval = ERR_OK;
 
-  for(q = p; q != NULL; q = q->next)
-  {
-    if(i >= ETH_TX_DESC_CNT)
-      return ERR_IF;
+    ETH_BufferTypeDef Txbuffer[ETH_TX_DESC_CNT] = {0};
+    memset(Txbuffer, 0, sizeof(Txbuffer));
 
-    Txbuffer[i].buffer = q->payload;
-    Txbuffer[i].len = q->len;
-
-    if(i>0)
+    /* Fill TX buffer chain */
+    for (q = p; q != NULL; q = q->next)
     {
-      Txbuffer[i-1].next = &Txbuffer[i];
+        if (i >= ETH_TX_DESC_CNT)
+        {
+            DebugUART_Print("[TX] Too many pbuf segments (%lu), drop\r\n", (unsigned long)i);
+            return ERR_IF;
+        }
+
+        Txbuffer[i].buffer = q->payload;
+        Txbuffer[i].len    = q->len;
+
+        if (i > 0U)
+            Txbuffer[i - 1U].next = &Txbuffer[i];
+
+        if (q->next == NULL)
+            Txbuffer[i].next = NULL;
+
+        /*
+         * IMPORTANT: Clean D-Cache for payload buffer so DMA reads fresh data.
+         * Even if you place LWIP heap in non-cacheable D2 SRAM, this protects you
+         * from случайных буферов в кэшируемой памяти (например, если где-то изменишь alloc).
+         */
+        clean_dcache_range(q->payload, q->len);
+
+        i++;
     }
 
-    if(q->next == NULL)
+    /* Configure transmission */
+    TxConfig.Length   = p->tot_len;
+    TxConfig.TxBuffer = Txbuffer;
+    TxConfig.pData    = p;
+
+    /* Also clean cache for TxConfig buffer descriptors themselves just in case */
+    clean_dcache_range(Txbuffer, sizeof(Txbuffer));
+    clean_dcache_range(&TxConfig, sizeof(TxConfig));
+
+    /* lwIP zero-copy: keep pbuf until TxFreeCallback frees it */
+    pbuf_ref(p);
+
+    /* Transmit with retry if busy */
+    do
     {
-      Txbuffer[i].next = NULL;
-    }
+        if (HAL_ETH_Transmit_IT(&heth, &TxConfig) == HAL_OK)
+        {
+            errval = ERR_OK;
+            DebugUART_Print("[TX] Transmit OK\r\n");
+        }
+        else
+        {
+            uint32_t error = HAL_ETH_GetError(&heth);
+            DebugUART_Print("[TX] Transmit failed, error: %lu\r\n", (unsigned long)error);
 
-    i++;
-  }
+            if (error & HAL_ETH_ERROR_BUSY)
+            {
+                DebugUART_Print("[TX] Waiting for descriptors...\r\n");
 
-  TxConfig.Length = p->tot_len;
-  TxConfig.TxBuffer = Txbuffer;
-  TxConfig.pData = p;
+                if (osSemaphoreAcquire(TxPktSemaphore, ETHIF_TX_TIMEOUT) == osOK)
+                {
+                    HAL_ETH_ReleaseTxPacket(&heth);
+                    errval = ERR_BUF;  /* retry */
+                    DebugUART_Print("[TX] Retrying...\r\n");
+                }
+                else
+                {
+                    DebugUART_Print("[TX] Timeout waiting for descriptors!\r\n");
+                    pbuf_free(p);
+                    errval = ERR_IF;
+                }
+            }
+            else
+            {
+                DebugUART_Print("[TX] Non-busy error, dropping packet\r\n");
+                pbuf_free(p);
+                errval = ERR_IF;
+            }
+        }
+    } while (errval == ERR_BUF);
 
-  pbuf_ref(p);
-
-  do
-  {
-    if(HAL_ETH_Transmit_IT(&heth, &TxConfig) == HAL_OK)
-    {
-      errval = ERR_OK;
-    }
-    else
-    {
-
-      if(HAL_ETH_GetError(&heth) & HAL_ETH_ERROR_BUSY)
-      {
-        /* Wait for descriptors to become available */
-        osSemaphoreAcquire(TxPktSemaphore, ETHIF_TX_TIMEOUT);
-        HAL_ETH_ReleaseTxPacket(&heth);
-        errval = ERR_BUF;
-      }
-      else
-      {
-        /* Other error */
-        pbuf_free(p);
-        errval =  ERR_IF;
-      }
-    }
-  }while(errval == ERR_BUF);
-
-  return errval;
+    return errval;
 }
 
 /**
@@ -460,6 +575,17 @@ static struct pbuf * low_level_input(struct netif *netif)
   if(RxAllocStatus == RX_ALLOC_OK)
   {
     HAL_ETH_ReadData(&heth, (void **)&p);
+
+    /* USER CODE BEGIN DEBUG_INPUT */
+    if (p != NULL) {
+        static int packet_count = 0;
+        packet_count++;
+        DebugUART_Print("[ETH] Received packet #%d, len=%d, tot_len=%d\r\n",
+                       packet_count, p->len, p->tot_len);
+
+        // debug_arp_packet(p);  // ВРЕМЕННО УБРАТЬ
+    }
+    /* USER CODE END DEBUG_INPUT */
   }
 
   return p;
@@ -620,10 +746,21 @@ u32_t sys_now(void)
 
 void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(ethHandle->Instance==ETH)
-  {
-  /* USER CODE BEGIN ETH_MspInit 0 */
+	DebugUART_Print("[ETH] >>> HAL_ETH_MspInit ENTER <<< inst=%p\r\n", ethHandle->Instance);
+
+	  /* ВКЛЮЧАЕМ SYSCFG И ВЫБИРАЕМ RMII ВСЕГДА */
+	  __HAL_RCC_SYSCFG_CLK_ENABLE();
+	  HAL_SYSCFG_ETHInterfaceSelect(SYSCFG_ETH_RMII);
+	  DebugUART_Print("[ETH] SYSCFG: RMII selected (forced)\r\n");
+
+	  if(ethHandle->Instance==ETH)
+	  {
+	    DebugUART_Print("[ETH] Instance == ETH OK\r\n");
+	  }
+	  else
+	  {
+	    DebugUART_Print("[ETH] WARNING: Instance != ETH\r\n");
+	  }
 
   /* USER CODE END ETH_MspInit 0 */
     /* Enable Peripheral clock */
@@ -648,21 +785,22 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_4|GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    //GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
     GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -917,7 +1055,7 @@ void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd, uint8_t *buff, uint16_t 
   }
 
   /* Invalidate data cache because Rx DMA's writing to physical memory makes it stale. */
-  SCB_InvalidateDCache_by_Addr((uint32_t *)buff, Length);
+  invalidate_dcache_range(buff, Length);
 
 /* USER CODE END HAL ETH RxLinkCallback */
 }

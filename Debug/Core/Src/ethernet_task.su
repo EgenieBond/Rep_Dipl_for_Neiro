@@ -1,0 +1,2 @@
+../Core/Src/ethernet_task.c:24:13:PHY_Scan	56	static
+../Core/Src/ethernet_task.c:43:6:EthernetTask	40	static

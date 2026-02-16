@@ -24,6 +24,7 @@
 #include "task.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "debug_uart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -86,7 +87,30 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+	DebugUART_Print("\r\n!!! HARD FAULT !!!\r\n");
 
+	  uint32_t *sp;
+	  __asm volatile(
+	      "tst lr, #4\n"
+	      "ite eq\n"
+	      "mrseq %0, msp\n"
+	      "mrsne %0, psp\n"
+	      : "=r"(sp)
+	  );
+
+	  DebugUART_Print("R0  = 0x%08lX\r\n", sp[0]);
+	  DebugUART_Print("R1  = 0x%08lX\r\n", sp[1]);
+	  DebugUART_Print("R2  = 0x%08lX\r\n", sp[2]);
+	  DebugUART_Print("R3  = 0x%08lX\r\n", sp[3]);
+	  DebugUART_Print("R12 = 0x%08lX\r\n", sp[4]);
+	  DebugUART_Print("LR  = 0x%08lX\r\n", sp[5]);
+	  DebugUART_Print("PC  = 0x%08lX\r\n", sp[6]);
+	  DebugUART_Print("PSR = 0x%08lX\r\n", sp[7]);
+
+	  DebugUART_Print("HFSR = 0x%08lX\r\n", SCB->HFSR);
+	  DebugUART_Print("CFSR = 0x%08lX\r\n", SCB->CFSR);
+	  DebugUART_Print("MMFAR = 0x%08lX\r\n", SCB->MMFAR);
+	  DebugUART_Print("BFAR = 0x%08lX\r\n", SCB->BFAR);
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {

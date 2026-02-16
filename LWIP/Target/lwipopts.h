@@ -56,6 +56,8 @@
 /*----- Value supported for H7 devices: 1 -----*/
 #define LWIP_SUPPORT_CUSTOM_PBUF 1
 /*----- Value in opt.h for LWIP_ETHERNET: LWIP_ARP || PPPOE_SUPPORT -*/
+#define ETHARP_SUPPORT_STATIC_ENTRIES 1  // ДОБАВЬТЕ!
+#define LWIP_ARP 1
 #define LWIP_ETHERNET 1
 /*----- Value in opt.h for LWIP_DNS_SECURE: (LWIP_DNS_SECURE_RAND_XID | LWIP_DNS_SECURE_NO_MULTIPLE_OUTSTANDING | LWIP_DNS_SECURE_RAND_SRC_PORT) -*/
 #define LWIP_DNS_SECURE 7
@@ -111,7 +113,21 @@
 #define CHECKSUM_CHECK_ICMP6 0
 /*-----------------------------------------------------------------------------*/
 /* USER CODE BEGIN 1 */
+/* Можно добавить свои настройки здесь */
+#define IP_ADDR0   10
+#define IP_ADDR1   0
+#define IP_ADDR2   0
+#define IP_ADDR3   100
 
+#define NETMASK_ADDR0   255
+#define NETMASK_ADDR1   0
+#define NETMASK_ADDR2   0
+#define NETMASK_ADDR3   0
+
+#define GW_ADDR0   10
+#define GW_ADDR1   0
+#define GW_ADDR2   0
+#define GW_ADDR3   1
 /* USER CODE END 1 */
 
 #ifdef __cplusplus

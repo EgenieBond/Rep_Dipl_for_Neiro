@@ -5,9 +5,14 @@
  *      Author: Egenie
  */
 
-#ifndef INC_ETHERNET_TASK_H_
-#define INC_ETHERNET_TASK_H_
+#ifndef ETHERNET_TASK_H
+#define ETHERNET_TASK_H
+
+#include "cmsis_os.h"
+
+extern osThreadId_t ethernetTaskHandle;
+extern osMessageQueueId_t eth_to_core_queue;
 
 void EthernetTask(void *argument);
 
-#endif /* INC_ETHERNET_TASK_H_ */
+#endif
